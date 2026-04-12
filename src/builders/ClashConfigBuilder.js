@@ -240,7 +240,7 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
                     password: proxy.password,
                     cipher: proxy.security,
                     tls: proxy.tls?.enabled || false,
-                    'client-fingerprint': proxy.tls?.utls?.fingerprint,
+                    'client-fingerprint': proxy.tls?.reality?.enabled ? proxy.tls?.utls?.fingerprint : undefined,
                     sni: proxy.tls?.server_name || '',
                     network: proxy.transport?.type || 'tcp',
                     'ws-opts': proxy.transport?.type === 'ws' ? {

@@ -18,6 +18,10 @@ export class BaseConfigBuilder {
         this.subscriptionUserinfo = undefined;
     }
 
+    setPreParsedProxies(proxies) {
+        this._preParsedProxies = proxies;
+    }
+
     async build() {
         const customItems = await this.parseCustomItems();
         this.addCustomItems(customItems);
@@ -26,6 +30,9 @@ export class BaseConfigBuilder {
     }
 
     async parseCustomItems() {
+        if (this._preParsedProxies) {
+            return this._preParsedProxies;
+        }
         const input = this.inputString || '';
         const parsedItems = [];
 

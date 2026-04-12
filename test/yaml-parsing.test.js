@@ -146,6 +146,31 @@ const testCases = [
         }
     },
     {
+        name: 'Trojan WS 缺省 TLS 解析',
+        description: '验证 Clash YAML trojan 节点未显式 tls=true 时仍保留默认 TLS、SNI 与 WS 配置',
+        input: `proxies:
+  - {name: CF官方优选1, server: 198.41.223.146, port: 2083, type: trojan, password: test-password, sni: sszl.ccwu.cc, skip-cert-verify: false, network: ws, ws-opts: {path: "/proxyip=167.253.153.228,213.210.4.131", headers: {Host: sszl.ccwu.cc}}}`,
+        expected: {
+            proxyCount: 1,
+            proxyTags: ['CF官方优选1'],
+            typeCount: { trojan: 1 },
+            proxyDetails: [
+                {
+                    tag: 'CF官方优选1',
+                    fields: {
+                        type: 'trojan',
+                        'tls.enabled': true,
+                        'tls.server_name': 'sszl.ccwu.cc',
+                        'tls.insecure': false,
+                        'transport.type': 'ws',
+                        'transport.path': '/proxyip=167.253.153.228,213.210.4.131',
+                        'transport.headers.Host': 'sszl.ccwu.cc'
+                    }
+                }
+            ]
+        }
+    },
+    {
         name: '解析 proxy-groups 段',
         description: '验证 Clash YAML 中的 proxy-groups 被收集以便后续合并',
         input: `proxies:

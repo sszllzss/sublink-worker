@@ -6,6 +6,7 @@ import { Navbar } from '../components/Navbar.jsx';
 import { Form } from '../components/Form.jsx';
 import { Footer } from '../components/Footer.jsx';
 import { UpdateChecker } from '../components/UpdateChecker.jsx';
+import { AggregatorPage } from '../components/AggregatorPage.jsx';
 import { SingboxConfigBuilder } from '../builders/SingboxConfigBuilder.js';
 import { ClashConfigBuilder } from '../builders/ClashConfigBuilder.js';
 import { SurgeConfigBuilder } from '../builders/SurgeConfigBuilder.js';
@@ -14,9 +15,12 @@ import { encodeBase64, tryDecodeSubscriptionLines } from '../utils.js';
 import { APP_NAME, APP_SUBTITLE } from '../constants.js';
 import { ShortLinkService } from '../services/shortLinkService.js';
 import { ConfigStorageService } from '../services/configStorageService.js';
+import { AuthService } from '../services/authService.js';
+import { AggregatorService } from '../services/aggregatorService.js';
 import { ServiceError, MissingDependencyError } from '../services/errors.js';
 import { normalizeRuntime } from '../runtime/runtimeConfig.js';
 import { PREDEFINED_RULE_SETS, SING_BOX_CONFIG, SING_BOX_CONFIG_V1_11, generateSubconverterConfig } from '../config/index.js';
+import { AggregatorScheduler } from '../services/aggregatorScheduler.js';
 
 const DEFAULT_USER_AGENT = 'curl/7.74.0';
 
@@ -24,8 +28,15 @@ export function createApp(bindings = {}) {
     const runtime = normalizeRuntime(bindings);
     const services = {
         shortLinks: runtime.kv ? new ShortLinkService(runtime.kv, { shortLinkTtlSeconds: runtime.config.shortLinkTtlSeconds }) : null,
-        configStorage: runtime.kv ? new ConfigStorageService(runtime.kv, { configTtlSeconds: runtime.config.configTtlSeconds }) : null
+        configStorage: runtime.kv ? new ConfigStorageService(runtime.kv, { configTtlSeconds: runtime.config.configTtlSeconds }) : null,
+        auth: runtime.kv ? new AuthService(runtime.kv) : null,
+        aggregator: runtime.kv ? new AggregatorService(runtime.kv) : null,
+        scheduler: runtime.kv ? new AggregatorScheduler(runtime.kv, runtime.logger) : null
     };
+
+    // 请求驱动的后台刷新：限制最多每 30 秒扫描一次，不阻塞请求
+    let _lastSchedulerRun = 0;
+    const SCHEDULER_COOLDOWN_MS = 30_000;
 
     const app = new Hono();
 
@@ -34,6 +45,17 @@ export function createApp(bindings = {}) {
         const lang = c.req.query('lang') || acceptLanguage?.split(',')[0] || 'zh-CN';
         c.set('lang', lang);
         c.set('t', createTranslator(lang));
+
+        // 非阻塞后台刷新：每 30 秒最多触发一次扫描
+        if (services.scheduler) {
+            const now = Date.now();
+            if (now - _lastSchedulerRun > SCHEDULER_COOLDOWN_MS) {
+                _lastSchedulerRun = now;
+                // fire-and-forget，不阻塞当前请求
+                services.scheduler.tick().catch(() => {});
+            }
+        }
+
         await next();
     });
 
@@ -386,6 +408,192 @@ export function createApp(bindings = {}) {
         }
     });
 
+    // ── Aggregator UI ──────────────────────────────────────────────────────────
+    app.get('/agg', (c) => {
+        const t = c.get('t');
+        const lang = resolveLanguage(c.get('lang'));
+        return c.html(
+            <Layout title={t('aggregatorPage') + ' - ' + APP_NAME}>
+                <div class="flex flex-col min-h-screen">
+                    <Navbar />
+                    <main class="flex-1">
+                        <AggregatorPage t={t} lang={lang} />
+                    </main>
+                    <Footer />
+                </div>
+            </Layout>
+        );
+    });
+
+    // ── Auth API ───────────────────────────────────────────────────────────────
+    app.post('/api/auth/register', async (c) => {
+        try {
+            const auth = requireService(services.auth, 'Auth');
+            const { username, password } = await c.req.json();
+            await auth.register(username, password);
+            return c.text('ok');
+        } catch (e) {
+            return c.text(e.message, 400);
+        }
+    });
+
+    app.post('/api/auth/login', async (c) => {
+        try {
+            const auth = requireService(services.auth, 'Auth');
+            const { username, password } = await c.req.json();
+            const token = await auth.login(username, password);
+            c.header('Set-Cookie', `auth_token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7 * 24 * 3600}`);
+            return c.text('ok');
+        } catch (e) {
+            return c.text(e.message, 401);
+        }
+    });
+
+    app.post('/api/auth/logout', async (c) => {
+        const auth = services.auth;
+        if (auth) {
+            const token = auth.getTokenFromRequest(c.req);
+            await auth.logout(token);
+        }
+        c.header('Set-Cookie', 'auth_token=; Path=/; HttpOnly; Max-Age=0');
+        return c.text('ok');
+    });
+
+    app.get('/api/auth/me', async (c) => {
+        const auth = services.auth;
+        if (!auth) return c.json(null, 401);
+        const token = auth.getTokenFromRequest(c.req);
+        const session = await auth.getSession(token);
+        if (!session) return c.json(null, 401);
+        return c.json({ username: session.username });
+    });
+
+    // ── Aggregator API ─────────────────────────────────────────────────────────
+    app.get('/api/aggregators', async (c) => {
+        try {
+            const { session } = await requireAuth(c, services.auth);
+            const agg = requireService(services.aggregator, 'Aggregator');
+            const list = await agg.list(session.userId);
+            return c.json(list);
+        } catch (e) {
+            return c.text(e.message, e.status || 401);
+        }
+    });
+
+    app.post('/api/aggregators', async (c) => {
+        try {
+            const { session } = await requireAuth(c, services.auth);
+            const agg = requireService(services.aggregator, 'Aggregator');
+            const data = await c.req.json();
+            const created = await agg.create(session.userId, data);
+            return c.json(created);
+        } catch (e) {
+            return c.text(e.message, e.status || 400);
+        }
+    });
+
+    app.put('/api/aggregators/:id', async (c) => {
+        try {
+            const { session } = await requireAuth(c, services.auth);
+            const agg = requireService(services.aggregator, 'Aggregator');
+            const data = await c.req.json();
+            const updated = await agg.update(c.req.param('id'), session.userId, data);
+            return c.json(updated);
+        } catch (e) {
+            return c.text(e.message, e.status || 400);
+        }
+    });
+
+    app.delete('/api/aggregators/:id', async (c) => {
+        try {
+            const { session } = await requireAuth(c, services.auth);
+            const agg = requireService(services.aggregator, 'Aggregator');
+            await agg.delete(c.req.param('id'), session.userId);
+            return c.text('ok');
+        } catch (e) {
+            return c.text(e.message, e.status || 400);
+        }
+    });
+
+    app.post('/api/aggregators/:id/refresh', async (c) => {
+        try {
+            const { session } = await requireAuth(c, services.auth);
+            const aggSvc = requireService(services.aggregator, 'Aggregator');
+            const aggData = await aggSvc.get(c.req.param('id'));
+            if (!aggData || aggData.userId !== session.userId) return c.text('Not found', 404);
+            const ua = getRequestHeader(c.req, 'User-Agent') || DEFAULT_USER_AGENT;
+            const refreshed = await aggSvc.refresh(c.req.param('id'), ua);
+            return c.json({ lastRefresh: refreshed.lastRefresh, cachedProxyCount: refreshed.cachedProxies?.length || 0 });
+        } catch (e) {
+            return c.text(e.message, e.status || 400);
+        }
+    });
+
+    // ── Aggregator Output Routes ───────────────────────────────────────────────
+    const aggOutputHandler = (format) => async (c) => {
+        try {
+            const aggSvc = requireService(services.aggregator, 'Aggregator');
+            const id = c.req.param('id');
+            const ua = c.req.query('ua') || getRequestHeader(c.req, 'User-Agent') || DEFAULT_USER_AGENT;
+            const aggData = await aggSvc.getOrRefresh(id, ua);
+            if (!aggData) return c.text('Aggregator not found', 404);
+
+            const proxies = aggData.cachedProxies || [];
+            const selectedRules = aggData.selectedRules?.length ? aggData.selectedRules : parseSelectedRules(c.req.query('selectedRules'));
+            const customRules = aggData.customRules?.length ? aggData.customRules : parseJsonArray(c.req.query('customRules'));
+            const groupByCountry = aggData.groupByCountry ?? parseBooleanFlag(c.req.query('group_by_country'));
+            const includeAutoSelect = aggData.includeAutoSelect ?? (c.req.query('include_auto_select') !== 'false');
+            const lang = c.get('lang');
+
+            let baseConfig;
+            if (aggData.configId && services.configStorage) {
+                baseConfig = await services.configStorage.getConfigById(aggData.configId);
+            }
+
+            if (format === 'clash') {
+                const builder = new ClashConfigBuilder('', selectedRules, customRules, baseConfig, lang, ua, groupByCountry, false, null, null, includeAutoSelect);
+                builder.setPreParsedProxies(proxies);
+                await builder.build();
+                return c.text(builder.formatConfig(), 200, { 'Content-Type': 'text/yaml; charset=utf-8' });
+            }
+
+            if (format === 'singbox') {
+                const singboxVersion = resolveSingboxConfigVersion(c.req.query('singbox_version'), getRequestHeader(c.req, 'User-Agent'));
+                const sbBase = baseConfig || (singboxVersion === '1.11' ? SING_BOX_CONFIG_V1_11 : SING_BOX_CONFIG);
+                const builder = new SingboxConfigBuilder('', selectedRules, customRules, sbBase, lang, ua, groupByCountry, false, null, null, singboxVersion, includeAutoSelect);
+                builder.setPreParsedProxies(proxies);
+                await builder.build();
+                return c.json(builder.config);
+            }
+
+            if (format === 'surge') {
+                const builder = new SurgeConfigBuilder('', selectedRules, customRules, baseConfig, lang, ua, groupByCountry, includeAutoSelect);
+                builder.setPreParsedProxies(proxies);
+                builder.setSubscriptionUrl(c.req.url);
+                await builder.build();
+                return c.text(builder.formatConfig());
+            }
+
+            if (format === 'xray') {
+                const uriLines = proxies.map(p => {
+                    // Re-serialize proxy objects to URI strings for xray output
+                    if (p._rawUri) return p._rawUri;
+                    return null;
+                }).filter(Boolean);
+                return c.text(encodeBase64(uriLines.join('\n')));
+            }
+
+            return c.text('Unknown format', 400);
+        } catch (e) {
+            return handleError(c, e, runtime.logger);
+        }
+    };
+
+    app.get('/agg/:id/clash', aggOutputHandler('clash'));
+    app.get('/agg/:id/singbox', aggOutputHandler('singbox'));
+    app.get('/agg/:id/surge', aggOutputHandler('surge'));
+    app.get('/agg/:id/xray', aggOutputHandler('xray'));
+
     app.get('/favicon.ico', async (c) => {
         if (!runtime.assetFetcher) {
             return c.notFound();
@@ -534,6 +742,30 @@ function requireConfigStorage(service) {
         throw new MissingDependencyError('Config storage functionality is unavailable');
     }
     return service;
+}
+
+function requireService(service, name) {
+    if (!service) {
+        const err = new MissingDependencyError(`${name} functionality is unavailable`);
+        throw err;
+    }
+    return service;
+}
+
+async function requireAuth(c, authService) {
+    if (!authService) {
+        const err = new Error('Auth unavailable');
+        err.status = 501;
+        throw err;
+    }
+    const token = authService.getTokenFromRequest(c.req);
+    const session = await authService.getSession(token);
+    if (!session) {
+        const err = new Error('Unauthorized');
+        err.status = 401;
+        throw err;
+    }
+    return { session };
 }
 
 function handleError(c, error, logger) {

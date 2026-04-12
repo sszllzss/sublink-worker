@@ -252,15 +252,18 @@ export function parseServerInfo(serverInfo) {
 }
 
 export function parseUrlParams(url) {
-	const [, rest] = url.split('://');
-	const [addressPart, ...remainingParts] = rest.split('?');
-	const paramsPart = remainingParts.join('?');
-
-	const [paramsOnly, ...fragmentParts] = paramsPart.split('#');
+	const schemeIndex = url.indexOf('://');
+	const rest = schemeIndex >= 0 ? url.slice(schemeIndex + 3) : url;
+	const hashIndex = rest.indexOf('#');
+	const beforeFragment = hashIndex >= 0 ? rest.slice(0, hashIndex) : rest;
+	const fragment = hashIndex >= 0 ? rest.slice(hashIndex + 1) : '';
+	const queryIndex = beforeFragment.indexOf('?');
+	const addressPart = queryIndex >= 0 ? beforeFragment.slice(0, queryIndex) : beforeFragment;
+	const paramsOnly = queryIndex >= 0 ? beforeFragment.slice(queryIndex + 1) : '';
 	const searchParams = new URLSearchParams(paramsOnly);
 	const params = Object.fromEntries(searchParams.entries());
 
-	let name = fragmentParts.length > 0 ? fragmentParts.join('#') : '';
+	let name = fragment;
 	try {
 		name = decodeURIComponent(name);
 	} catch (error) { };

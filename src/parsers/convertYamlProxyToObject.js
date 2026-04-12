@@ -6,6 +6,14 @@ export function convertYamlProxyToObject(p) {
         if (value === undefined || value === null) return undefined;
         return Array.isArray(value) ? value : [value];
     };
+    const parseBool = (value, fallback = undefined) => {
+        if (value === undefined || value === null) return fallback;
+        if (typeof value === 'boolean') return value;
+        const lowered = String(value).toLowerCase();
+        if (lowered === 'true' || lowered === '1') return true;
+        if (lowered === 'false' || lowered === '0') return false;
+        return fallback;
+    };
     switch (type) {
         case 'ss':
         case 'shadowsocks':
@@ -124,19 +132,19 @@ export function convertYamlProxyToObject(p) {
             };
         }
         case 'trojan': {
-            const tlsEnabled = !!p.tls;
+            const tlsEnabled = parseBool(p.tls, true);
             const reality = p['reality-opts'];
             const tls = tlsEnabled
                 ? {
                     enabled: true,
                     server_name: p.servername || p.sni,
-                    insecure: !!p['skip-cert-verify'],
+                    insecure: parseBool(p['skip-cert-verify'], false),
                     ...(reality
                         ? { reality: { enabled: true, public_key: reality['public-key'], short_id: reality['short-id'] } }
                         : {})
                 }
                 : { enabled: false };
-            if (p['client-fingerprint']) {
+            if (tls.enabled && p['client-fingerprint']) {
                 tls.utls = {
                     enabled: true,
                     fingerprint: p['client-fingerprint']
@@ -169,7 +177,7 @@ export function convertYamlProxyToObject(p) {
                 server_port: parseInt(p.port),
                 password: p.password,
                 network: transport?.type || p.network || 'tcp',
-                tcp_fast_open: typeof p['fast-open'] !== 'undefined' ? !!p['fast-open'] : false,
+                tcp_fast_open: parseBool(p['fast-open'], false),
                 tls,
                 transport,
                 flow: p.flow ?? undefined,

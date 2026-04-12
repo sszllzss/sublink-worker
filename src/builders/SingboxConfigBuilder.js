@@ -115,6 +115,21 @@ export class SingboxConfigBuilder extends BaseConfigBuilder {
         // xudp is default in newer versions
         delete sanitized.packet_encoding;
 
+        if (sanitized.type === 'anytls') {
+            if (sanitized['idle-session-check-interval'] !== undefined) {
+                sanitized.idle_session_check_interval = sanitized['idle-session-check-interval'];
+                delete sanitized['idle-session-check-interval'];
+            }
+            if (sanitized['idle-session-timeout'] !== undefined) {
+                sanitized.idle_session_timeout = sanitized['idle-session-timeout'];
+                delete sanitized['idle-session-timeout'];
+            }
+            if (sanitized['min-idle-session'] !== undefined) {
+                sanitized.min_idle_session = sanitized['min-idle-session'];
+                delete sanitized['min-idle-session'];
+            }
+        }
+
         return sanitized;
     }
 

@@ -1,4 +1,4 @@
-import { parseServerInfo, parseUrlParams, createTlsConfig, createTransportConfig } from '../../utils.js';
+import { parseServerInfo, parseUrlParams, createTransportConfig, parseArray, parseBool } from '../../utils.js';
 
 export function parseTrojan(url) {
     const { addressPart, params, name } = parseUrlParams(url);
@@ -6,8 +6,30 @@ export function parseTrojan(url) {
     const { host, port } = parseServerInfo(serverInfo);
 
     const parsedURL = parseServerInfo(addressPart);
-    const tls = createTlsConfig(params);
-    const transport = params.type !== 'tcp' ? createTransportConfig(params) : undefined;
+    const security = params.security || params.tls;
+    const tls = security === 'none'
+        ? { enabled: false }
+        : {
+            enabled: true,
+            server_name: params.sni || params.peer || params.host,
+            insecure: parseBool(params.allowInsecure ?? params.insecure ?? params.allow_insecure ?? params['skip-cert-verify'], false),
+            alpn: parseArray(params.alpn)
+        };
+    if (params.security === 'reality') {
+        tls.reality = {
+            enabled: true,
+            public_key: params.pbk,
+            short_id: params.sid,
+        };
+    }
+    const fingerprint = params['client-fingerprint'] || params.fp || params.fingerprint;
+    if (fingerprint) {
+        tls.utls = {
+            enabled: true,
+            fingerprint
+        };
+    }
+    const transport = params.type && params.type !== 'tcp' ? createTransportConfig(params) : undefined;
     return {
         type: 'trojan',
         tag: name,

@@ -13,6 +13,13 @@ export const Navbar = () => {
                     </a>
                     <div class="flex items-center gap-3">
                         <a
+                            href="/agg"
+                            class="px-4 py-2 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors flex items-center gap-2"
+                        >
+                            <i class="fas fa-layer-group"></i>
+                            <span>聚合</span>
+                        </a>
+                        <a
                             href={DOCS_URL}
                             target="_blank"
                             rel="noopener noreferrer"
