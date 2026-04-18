@@ -280,5 +280,66 @@ describe('UDP handling in proxy conversion', () => {
             // Verify udp is stripped for sing-box
             expect(singboxProxy.udp).toBeUndefined();
         });
+
+        it('should parse VLESS xhttp Clash YAML back into internal transport structure', () => {
+            const clashProxy = {
+                name: 'VLESS-XHTTP',
+                type: 'vless',
+                server: 'www.web.com',
+                port: 443,
+                uuid: 'test-uuid',
+                encryption: '',
+                tls: true,
+                servername: 'vps1.sszl.cc.cd',
+                network: 'xhttp',
+                'xhttp-opts': {
+                    path: '/72581b16',
+                    host: 'vps1.sszl.cc.cd',
+                    mode: 'auto',
+                    'download-settings': {
+                        path: '/72581b16',
+                        mode: 'auto',
+                        server: '192.3.117.108',
+                        port: 4436,
+                        network: 'xhttp',
+                        servername: 'www.sony.com',
+                        'client-fingerprint': 'chrome',
+                        'reality-opts': {
+                            'public-key': 'pubkey',
+                            'short-id': '1b6939d9'
+                        }
+                    }
+                },
+                udp: true,
+                'skip-cert-verify': false
+            };
+
+            const parsed = convertYamlProxyToObject(clashProxy);
+
+            expect(parsed.type).toBe('vless');
+            expect(parsed.transport).toEqual({
+                type: 'xhttp',
+                path: '/72581b16',
+                host: 'vps1.sszl.cc.cd',
+                mode: 'auto',
+                download_settings: {
+                    path: '/72581b16',
+                    mode: 'auto',
+                    server: '192.3.117.108',
+                    port: 4436,
+                    network: 'xhttp',
+                    server_name: 'www.sony.com',
+                    utls: {
+                        enabled: true,
+                        fingerprint: 'chrome'
+                    },
+                    reality: {
+                        enabled: true,
+                        public_key: 'pubkey',
+                        short_id: '1b6939d9'
+                    }
+                }
+            });
+        });
     });
 });
