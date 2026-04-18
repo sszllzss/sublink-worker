@@ -213,6 +213,7 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
                                 ...(proxy.transport.download_settings.server ? { server: proxy.transport.download_settings.server } : {}),
                                 ...(proxy.transport.download_settings.port !== undefined ? { port: proxy.transport.download_settings.port } : {}),
                                 ...(proxy.transport.download_settings.network ? { network: proxy.transport.download_settings.network } : {}),
+                                ...(proxy.transport.download_settings.tls !== undefined ? { tls: proxy.transport.download_settings.tls } : {}),
                                 ...(proxy.transport.download_settings.server_name ? { servername: proxy.transport.download_settings.server_name } : {}),
                                 ...(proxy.transport.download_settings.insecure !== undefined ? { 'skip-cert-verify': proxy.transport.download_settings.insecure } : {}),
                                 ...(proxy.transport.download_settings.utls?.fingerprint ? { 'client-fingerprint': proxy.transport.download_settings.utls.fingerprint } : {}),

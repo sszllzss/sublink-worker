@@ -212,6 +212,7 @@ describe('UDP handling in proxy conversion', () => {
                     mode: 'auto',
                     download_settings: {
                         path: '/down',
+                        host: 'www.sony.com',
                         mode: 'auto',
                         server: '192.3.117.108',
                         port: 4436,
@@ -239,9 +240,11 @@ describe('UDP handling in proxy conversion', () => {
                 mode: 'auto',
                 'download-settings': {
                     path: '/down',
+                    host: 'www.sony.com',
                     mode: 'auto',
                     server: '192.3.117.108',
                     port: 4436,
+                    tls: true,
                     servername: 'www.sony.com',
                     'client-fingerprint': 'chrome',
                     'reality-opts': {
@@ -302,6 +305,7 @@ describe('UDP handling in proxy conversion', () => {
                         server: '192.3.117.108',
                         port: 4436,
                         network: 'xhttp',
+                        tls: true,
                         servername: 'www.sony.com',
                         'client-fingerprint': 'chrome',
                         'reality-opts': {
@@ -328,6 +332,7 @@ describe('UDP handling in proxy conversion', () => {
                     server: '192.3.117.108',
                     port: 4436,
                     network: 'xhttp',
+                    tls: true,
                     server_name: 'www.sony.com',
                     utls: {
                         enabled: true,

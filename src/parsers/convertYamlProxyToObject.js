@@ -62,6 +62,7 @@ export function convertYamlProxyToObject(p) {
                                     ...(downloadSettings.server ? { server: downloadSettings.server } : {}),
                                     ...(downloadSettings.port !== undefined ? { port: downloadSettings.port } : {}),
                                     ...(downloadSettings.network ? { network: downloadSettings.network } : {}),
+                                    ...(downloadSettings.tls !== undefined ? { tls: !!downloadSettings.tls } : {}),
                                     ...(downloadSettings.servername ? { server_name: downloadSettings.servername } : {}),
                                     ...(downloadSettings['skip-cert-verify'] !== undefined ? { insecure: !!downloadSettings['skip-cert-verify'] } : {}),
                                     ...(downloadSettings['client-fingerprint']
@@ -159,6 +160,7 @@ export function convertYamlProxyToObject(p) {
                                     ...(downloadSettings.server ? { server: downloadSettings.server } : {}),
                                     ...(downloadSettings.port !== undefined ? { port: downloadSettings.port } : {}),
                                     ...(downloadSettings.network ? { network: downloadSettings.network } : {}),
+                                    ...(downloadSettings.tls !== undefined ? { tls: !!downloadSettings.tls } : {}),
                                     ...(downloadSettings.servername ? { server_name: downloadSettings.servername } : {}),
                                     ...(downloadSettings['skip-cert-verify'] !== undefined ? { insecure: !!downloadSettings['skip-cert-verify'] } : {}),
                                     ...(downloadSettings['client-fingerprint']

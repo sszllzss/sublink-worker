@@ -1,6 +1,6 @@
 {
   "name": "sublink-worker",
-  "version": "102.4.3",
+  "version": "102.4.4",
   "private": true,
   "type": "module",
   "scripts": {

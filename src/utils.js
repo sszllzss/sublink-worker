@@ -326,8 +326,8 @@ export function createTransportConfig(params) {
 			...(downloadSettings.xhttpSettings?.path || downloadSettings.path
 				? { path: downloadSettings.xhttpSettings?.path ?? downloadSettings.path }
 				: {}),
-			...(downloadSettings.xhttpSettings?.host || downloadSettings.host
-				? { host: downloadSettings.xhttpSettings?.host ?? downloadSettings.host }
+			...((downloadSettings.xhttpSettings?.host ?? downloadSettings.host ?? downloadSettings.tlsSettings?.serverName ?? downloadSettings.realitySettings?.serverName)
+				? { host: downloadSettings.xhttpSettings?.host ?? downloadSettings.host ?? downloadSettings.tlsSettings?.serverName ?? downloadSettings.realitySettings?.serverName }
 				: {}),
 			...(downloadSettings.xhttpSettings?.mode || downloadSettings.mode
 				? { mode: downloadSettings.xhttpSettings?.mode ?? downloadSettings.mode }
@@ -335,6 +335,7 @@ export function createTransportConfig(params) {
 			...(downloadSettings.address && { server: downloadSettings.address }),
 			...(downloadSettings.port !== undefined && { port: parseMaybeNumber(downloadSettings.port) ?? downloadSettings.port }),
 			...(downloadSettings.network && { network: downloadSettings.network }),
+			...(downloadSettings.security && downloadSettings.security !== 'none' ? { tls: true } : {}),
 			...(downloadSettings.tlsSettings?.serverName && { server_name: downloadSettings.tlsSettings.serverName }),
 			...(downloadSettings.tlsSettings?.allowInsecure !== undefined && {
 				insecure: parseBool(downloadSettings.tlsSettings.allowInsecure, false)
