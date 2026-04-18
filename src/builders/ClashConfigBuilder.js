@@ -147,7 +147,7 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
                     alterId: proxy.alter_id ?? 0,
                     cipher: proxy.security,
                     tls: proxy.tls?.enabled || false,
-                    servername: proxy.tls?.server_name || '',
+                    ...(proxy.tls?.server_name ? { servername: proxy.tls.server_name } : {}),
                     'skip-cert-verify': !!proxy.tls?.insecure,
                     network: proxy.transport?.type || proxy.network || 'tcp',
                     'ws-opts': proxy.transport?.type === 'ws'
@@ -182,20 +182,48 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
                     udp: getClashUdpValue(proxy)
                 };
             case 'vless':
+                {
+                const isXhttp = proxy.transport?.type === 'xhttp';
+                const fallbackServerName = proxy.tls?.server_name || (isXhttp && proxy.tls?.enabled ? proxy.server : undefined);
+                const fallbackXhttpHost = proxy.transport?.host || (isXhttp ? fallbackServerName || proxy.server : undefined);
                 return {
                     name: proxy.tag,
                     type: proxy.type,
                     server: proxy.server,
                     port: proxy.server_port,
                     uuid: proxy.uuid,
-                    cipher: proxy.security,
+                    encryption: !proxy.security || proxy.security === 'none' ? '' : proxy.security,
                     tls: proxy.tls?.enabled || false,
                     'client-fingerprint': proxy.tls?.utls?.fingerprint,
-                    servername: proxy.tls?.server_name || '',
+                    ...(fallbackServerName ? { servername: fallbackServerName } : {}),
                     network: proxy.transport?.type || 'tcp',
                     'ws-opts': proxy.transport?.type === 'ws' ? {
                         path: proxy.transport.path,
                         headers: proxy.transport.headers
+                    } : undefined,
+                    'xhttp-opts': proxy.transport?.type === 'xhttp' ? {
+                        ...(proxy.transport.path ? { path: proxy.transport.path } : {}),
+                        ...(fallbackXhttpHost ? { host: fallbackXhttpHost } : {}),
+                        ...(proxy.transport.mode ? { mode: proxy.transport.mode } : {}),
+                        ...(proxy.transport.download_settings ? {
+                            'download-settings': {
+                                ...(proxy.transport.download_settings.path ? { path: proxy.transport.download_settings.path } : {}),
+                                ...(proxy.transport.download_settings.host ? { host: proxy.transport.download_settings.host } : {}),
+                                ...(proxy.transport.download_settings.mode ? { mode: proxy.transport.download_settings.mode } : {}),
+                                ...(proxy.transport.download_settings.server ? { server: proxy.transport.download_settings.server } : {}),
+                                ...(proxy.transport.download_settings.port !== undefined ? { port: proxy.transport.download_settings.port } : {}),
+                                ...(proxy.transport.download_settings.network ? { network: proxy.transport.download_settings.network } : {}),
+                                ...(proxy.transport.download_settings.server_name ? { servername: proxy.transport.download_settings.server_name } : {}),
+                                ...(proxy.transport.download_settings.insecure !== undefined ? { 'skip-cert-verify': proxy.transport.download_settings.insecure } : {}),
+                                ...(proxy.transport.download_settings.utls?.fingerprint ? { 'client-fingerprint': proxy.transport.download_settings.utls.fingerprint } : {}),
+                                ...(proxy.transport.download_settings.reality?.enabled ? {
+                                    'reality-opts': {
+                                        ...(proxy.transport.download_settings.reality.public_key ? { 'public-key': proxy.transport.download_settings.reality.public_key } : {}),
+                                        ...(proxy.transport.download_settings.reality.short_id ? { 'short-id': proxy.transport.download_settings.reality.short_id } : {})
+                                    }
+                                } : {})
+                            }
+                        } : {})
                     } : undefined,
                     'reality-opts': proxy.tls?.reality?.enabled ? {
                         'public-key': proxy.tls.reality.public_key,
@@ -211,6 +239,7 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
                     ...(proxy.packet_encoding ? { 'packet-encoding': proxy.packet_encoding } : {}),
                     'flow': proxy.flow ?? undefined,
                 };
+                }
             case 'hysteria2':
                 return {
                     name: proxy.tag,
@@ -225,7 +254,7 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
                     up: proxy.up,
                     down: proxy.down,
                     'recv-window-conn': proxy.recv_window_conn,
-                    sni: proxy.tls?.server_name || '',
+                    ...(proxy.tls?.server_name ? { sni: proxy.tls.server_name } : {}),
                     'skip-cert-verify': !!proxy.tls?.insecure,
                     ...(proxy.hop_interval !== undefined ? { 'hop-interval': proxy.hop_interval } : {}),
                     ...(proxy.alpn ? { alpn: proxy.alpn } : {}),
@@ -241,7 +270,7 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
                     cipher: proxy.security,
                     tls: proxy.tls?.enabled || false,
                     'client-fingerprint': proxy.tls?.reality?.enabled ? proxy.tls?.utls?.fingerprint : undefined,
-                    sni: proxy.tls?.server_name || '',
+                    ...(proxy.tls?.server_name ? { sni: proxy.tls.server_name } : {}),
                     network: proxy.transport?.type || 'tcp',
                     'ws-opts': proxy.transport?.type === 'ws' ? {
                         path: proxy.transport.path,

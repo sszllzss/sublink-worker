@@ -45,6 +45,47 @@ export function convertYamlProxyToObject(p) {
                     const w = p['ws-opts'] || {};
                     return { type: 'ws', path: w.path, headers: w.headers };
                 }
+                if (net === 'xhttp') {
+                    const xhttp = p['xhttp-opts'] || {};
+                    const downloadSettings = xhttp['download-settings'];
+                    return {
+                        type: 'xhttp',
+                        path: xhttp.path,
+                        host: xhttp.host,
+                        mode: xhttp.mode,
+                        ...(downloadSettings
+                            ? {
+                                download_settings: {
+                                    ...(downloadSettings.path ? { path: downloadSettings.path } : {}),
+                                    ...(downloadSettings.host ? { host: downloadSettings.host } : {}),
+                                    ...(downloadSettings.mode ? { mode: downloadSettings.mode } : {}),
+                                    ...(downloadSettings.server ? { server: downloadSettings.server } : {}),
+                                    ...(downloadSettings.port !== undefined ? { port: downloadSettings.port } : {}),
+                                    ...(downloadSettings.network ? { network: downloadSettings.network } : {}),
+                                    ...(downloadSettings.servername ? { server_name: downloadSettings.servername } : {}),
+                                    ...(downloadSettings['skip-cert-verify'] !== undefined ? { insecure: !!downloadSettings['skip-cert-verify'] } : {}),
+                                    ...(downloadSettings['client-fingerprint']
+                                        ? {
+                                            utls: {
+                                                enabled: true,
+                                                fingerprint: downloadSettings['client-fingerprint']
+                                            }
+                                        }
+                                        : {}),
+                                    ...(downloadSettings['reality-opts']
+                                        ? {
+                                            reality: {
+                                                enabled: true,
+                                                ...(downloadSettings['reality-opts']['public-key'] ? { public_key: downloadSettings['reality-opts']['public-key'] } : {}),
+                                                ...(downloadSettings['reality-opts']['short-id'] ? { short_id: downloadSettings['reality-opts']['short-id'] } : {})
+                                            }
+                                        }
+                                        : {})
+                                }
+                            }
+                            : {})
+                    };
+                }
                 if (net === 'grpc') {
                     const g = p['grpc-opts'] || {};
                     return { type: 'grpc', service_name: g['grpc-service-name'] };

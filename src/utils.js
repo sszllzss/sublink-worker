@@ -277,7 +277,10 @@ export function createTlsConfig(params) {
 		tls = {
 			enabled: true,
 			server_name: params.sni || params.host,
-			insecure: !!params?.allowInsecure || !!params?.insecure || !!params?.allow_insecure,
+			insecure: parseBool(
+				params?.allowInsecure ?? params?.insecure ?? params?.allow_insecure,
+				false
+			),
 			// utls: {
 			//   enabled: true,
 			//   fingerprint: "chrome"
@@ -295,13 +298,69 @@ export function createTlsConfig(params) {
 }
 
 export function createTransportConfig(params) {
-	return {
+	let extraConfig;
+	if (params.extra) {
+		try {
+			extraConfig = JSON.parse(params.extra);
+		} catch (_) {
+			extraConfig = undefined;
+		}
+	}
+
+	const baseTransport = {
 		type: params.type,
 		path: params.path ?? undefined,
 		...(params.host && { 'headers': { 'host': params.host } }),
 		...(params.type === 'grpc' && {
 			service_name: params.serviceName ?? undefined,
 		})
+	};
+
+	if (params.type !== 'xhttp') {
+		return baseTransport;
+	}
+
+	const downloadSettings = extraConfig?.downloadSettings;
+	const downloadTransport = downloadSettings
+		? {
+			...(downloadSettings.xhttpSettings?.path || downloadSettings.path
+				? { path: downloadSettings.xhttpSettings?.path ?? downloadSettings.path }
+				: {}),
+			...(downloadSettings.xhttpSettings?.host || downloadSettings.host
+				? { host: downloadSettings.xhttpSettings?.host ?? downloadSettings.host }
+				: {}),
+			...(downloadSettings.xhttpSettings?.mode || downloadSettings.mode
+				? { mode: downloadSettings.xhttpSettings?.mode ?? downloadSettings.mode }
+				: {}),
+			...(downloadSettings.address && { server: downloadSettings.address }),
+			...(downloadSettings.port !== undefined && { port: parseMaybeNumber(downloadSettings.port) ?? downloadSettings.port }),
+			...(downloadSettings.network && { network: downloadSettings.network }),
+			...(downloadSettings.tlsSettings?.serverName && { server_name: downloadSettings.tlsSettings.serverName }),
+			...(downloadSettings.tlsSettings?.allowInsecure !== undefined && {
+				insecure: parseBool(downloadSettings.tlsSettings.allowInsecure, false)
+			}),
+			...(downloadSettings.realitySettings && {
+				reality: {
+					enabled: true,
+					...(downloadSettings.realitySettings.publicKey && { public_key: downloadSettings.realitySettings.publicKey }),
+					...(downloadSettings.realitySettings.shortId && { short_id: downloadSettings.realitySettings.shortId })
+				}
+			}),
+			...(downloadSettings.realitySettings?.serverName && { server_name: downloadSettings.realitySettings.serverName }),
+			...(downloadSettings.realitySettings?.fingerprint && {
+				utls: {
+					enabled: true,
+					fingerprint: downloadSettings.realitySettings.fingerprint
+				}
+			})
+		}
+		: undefined;
+
+	return {
+		...baseTransport,
+		...(params.host && { host: params.host }),
+		...(params.mode && { mode: params.mode }),
+		...(downloadTransport && { download_settings: downloadTransport })
 	};
 }
 

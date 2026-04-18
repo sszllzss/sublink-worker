@@ -4,6 +4,7 @@ import { SingboxConfigBuilder } from '../src/builders/SingboxConfigBuilder.js';
 import { ClashConfigBuilder } from '../src/builders/ClashConfigBuilder.js';
 import { parseVless } from '../src/parsers/protocols/vlessParser.js';
 import { convertYamlProxyToObject } from '../src/parsers/convertYamlProxyToObject.js';
+import { ProxyParser } from '../src/parsers/ProxyParser.js';
 
 describe('UDP handling in proxy conversion', () => {
     describe('VLESS URL parsing with udp parameter', () => {
@@ -28,6 +29,22 @@ describe('UDP handling in proxy conversion', () => {
             const result = parseVless(url);
 
             expect(result.udp).toBeUndefined();
+        });
+
+        it('should preserve xhttp transport, fingerprint, alpn and tls booleans from VLESS URL', () => {
+            const url = 'vless://test-uuid@example.com:443?security=tls&sni=cdn.example.com&fp=chrome&alpn=h2%2Chttp%2F1.1&allowInsecure=0&insecure=0&type=xhttp&host=cdn.example.com&path=%2Ftest&mode=auto#TestXhttp';
+            const result = parseVless(url);
+
+            expect(result.transport).toEqual({
+                type: 'xhttp',
+                path: '/test',
+                headers: { host: 'cdn.example.com' },
+                host: 'cdn.example.com',
+                mode: 'auto'
+            });
+            expect(result.tls.insecure).toBe(false);
+            expect(result.tls.utls.fingerprint).toBe('chrome');
+            expect(result.alpn).toEqual(['h2', 'http/1.1']);
         });
     });
 
@@ -115,6 +132,124 @@ describe('UDP handling in proxy conversion', () => {
             const converted = builder.convertProxy(proxyWithDisabledUdp);
 
             expect(converted.udp).toBe(false);
+        });
+
+        it('should emit xhttp-opts for VLESS xhttp nodes', () => {
+            const proxyWithXhttp = {
+                tag: 'TestXhttp',
+                type: 'vless',
+                server: 'www.web.com',
+                server_port: 443,
+                uuid: 'test-uuid',
+                security: 'none',
+                tls: {
+                    enabled: true,
+                    server_name: 'cdn.example.com',
+                    insecure: false,
+                    utls: {
+                        enabled: true,
+                        fingerprint: 'chrome'
+                    }
+                },
+                transport: {
+                    type: 'xhttp',
+                    path: '/test',
+                    host: 'cdn.example.com',
+                    mode: 'auto'
+                },
+                alpn: ['h2', 'http/1.1']
+            };
+
+            const builder = new ClashConfigBuilder('', [], [], null, 'zh-CN', null);
+            const converted = builder.convertProxy(proxyWithXhttp);
+
+            expect(converted.network).toBe('xhttp');
+            expect(converted.encryption).toBe('');
+            expect(converted['xhttp-opts']).toEqual({
+                path: '/test',
+                host: 'cdn.example.com',
+                mode: 'auto'
+            });
+            expect(converted['client-fingerprint']).toBe('chrome');
+            expect(converted.alpn).toEqual(['h2', 'http/1.1']);
+            expect(converted['skip-cert-verify']).toBe(false);
+        });
+
+        it('should fallback xhttp tls servername and host to server when source URI omits sni and host', async () => {
+            const input = 'vless://72581b16-e1d5-4d44-836f-22524a0971c0@vps1.sszl.cc.cd:443?encryption=none&security=tls&insecure=0&allowInsecure=0&type=xhttp&path=%2F72581b16&mode=auto#xhttp%2Bcdn-cc.cd-';
+            const parsed = await ProxyParser.parse(input);
+            const builder = new ClashConfigBuilder('', [], [], null, 'zh-CN', null);
+            const converted = builder.convertProxy(parsed);
+
+            expect(converted.server).toBe('vps1.sszl.cc.cd');
+            expect(converted.tls).toBe(true);
+            expect(converted.servername).toBe('vps1.sszl.cc.cd');
+            expect(converted.network).toBe('xhttp');
+            expect(converted['xhttp-opts']).toEqual({
+                path: '/72581b16',
+                host: 'vps1.sszl.cc.cd',
+                mode: 'auto'
+            });
+            expect(converted['skip-cert-verify']).toBe(false);
+        });
+
+        it('should flatten xhttp download-settings to mihomo proxy fields', () => {
+            const proxyWithSplitXhttp = {
+                tag: 'TestSplitXhttp',
+                type: 'vless',
+                server: 'www.web.com',
+                server_port: 443,
+                uuid: 'test-uuid',
+                security: 'none',
+                tls: {
+                    enabled: true,
+                    server_name: 'up.example.com',
+                    insecure: false
+                },
+                transport: {
+                    type: 'xhttp',
+                    path: '/up',
+                    mode: 'auto',
+                    download_settings: {
+                        path: '/down',
+                        mode: 'auto',
+                        server: '192.3.117.108',
+                        port: 4436,
+                        tls: true,
+                        server_name: 'www.sony.com',
+                        utls: {
+                            enabled: true,
+                            fingerprint: 'chrome'
+                        },
+                        reality: {
+                            enabled: true,
+                            public_key: 'pubkey',
+                            short_id: '1b6939d9'
+                        }
+                    }
+                }
+            };
+
+            const builder = new ClashConfigBuilder('', [], [], null, 'zh-CN', null);
+            const converted = builder.convertProxy(proxyWithSplitXhttp);
+
+            expect(converted['xhttp-opts']).toEqual({
+                path: '/up',
+                host: 'up.example.com',
+                mode: 'auto',
+                'download-settings': {
+                    path: '/down',
+                    mode: 'auto',
+                    server: '192.3.117.108',
+                    port: 4436,
+                    servername: 'www.sony.com',
+                    'client-fingerprint': 'chrome',
+                    'reality-opts': {
+                        'public-key': 'pubkey',
+                        'short-id': '1b6939d9'
+                    }
+                }
+            });
         });
     });
 
