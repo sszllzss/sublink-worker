@@ -16,6 +16,7 @@ export class BaseConfigBuilder {
         this.includeAutoSelect = includeAutoSelect;
         this.providerUrls = [];  // URLs to use as providers (auto-sync)
         this.subscriptionUserinfo = undefined;
+        this.sourceGroupNames = [];
     }
 
     setPreParsedProxies(proxies) {
@@ -286,6 +287,32 @@ export class BaseConfigBuilder {
         return this.getProxies().map(proxy => this.getProxyName(proxy));
     }
 
+    getAggregatedSourceGroups() {
+        if (!Array.isArray(this._preParsedProxies) || this._preParsedProxies.length === 0) {
+            return [];
+        }
+
+        const grouped = new Map();
+        this._preParsedProxies.forEach(proxy => {
+            const groupName = typeof proxy?._aggregatorSourceGroupName === 'string'
+                ? proxy._aggregatorSourceGroupName.trim()
+                : '';
+            const proxyName = proxy?.tag;
+            if (!groupName || !proxyName) {
+                return;
+            }
+            if (!grouped.has(groupName)) {
+                grouped.set(groupName, []);
+            }
+            grouped.get(groupName).push(proxyName);
+        });
+
+        return Array.from(grouped.entries()).map(([name, proxies]) => ({
+            name,
+            proxies: [...new Set(proxies)]
+        }));
+    }
+
     getProxies() {
         throw new Error('getProxies must be implemented in child class');
     }
@@ -298,8 +325,16 @@ export class BaseConfigBuilder {
         throw new Error('convertProxy must be implemented in child class');
     }
 
-    addProxyToConfig(proxy) {
+    addProxyToConfig(proxy, sourceProxy = null) {
         throw new Error('addProxyToConfig must be implemented in child class');
+    }
+
+    shouldPreserveDuplicateProxy(sourceProxy) {
+        return Boolean(
+            sourceProxy?._aggregatorSourceGroupName?.trim?.()
+            || sourceProxy?._aggregatorSourceName?.trim?.()
+            || sourceProxy?._aggregatorSourcePrefix?.trim?.()
+        );
     }
 
     addAutoSelectGroup(proxyList) {
@@ -322,6 +357,10 @@ export class BaseConfigBuilder {
         throw new Error('addFallBackGroup must be implemented in child class');
     }
 
+    addSourceGroups() {
+        // Default: no-op. Child classes can generate source-based groups for aggregated subscriptions.
+    }
+
     addCountryGroups() {
         throw new Error('addCountryGroups must be implemented in child class');
     }
@@ -332,7 +371,7 @@ export class BaseConfigBuilder {
             if (item?.tag) {
                 const convertedProxy = this.convertProxy(item);
                 if (convertedProxy) {
-                    this.addProxyToConfig(convertedProxy);
+                    this.addProxyToConfig(convertedProxy, item);
                 }
             }
         });
@@ -343,6 +382,7 @@ export class BaseConfigBuilder {
         const proxyList = this.getProxyList();
 
         this.addAutoSelectGroup(proxyList);
+        this.addSourceGroups();
         this.addNodeSelectGroup(proxyList);
         if (this.groupByCountry) {
             this.addCountryGroups();

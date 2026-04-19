@@ -18,6 +18,7 @@ import { ConfigStorageService } from '../services/configStorageService.js';
 import { AuthService } from '../services/authService.js';
 import { AggregatorService } from '../services/aggregatorService.js';
 import { ServiceError, MissingDependencyError } from '../services/errors.js';
+import { serializeProxyToShareUri } from '../parsers/shareLinkSerializer.js';
 import { normalizeRuntime } from '../runtime/runtimeConfig.js';
 import { PREDEFINED_RULE_SETS, SING_BOX_CONFIG, SING_BOX_CONFIG_V1_11, generateSubconverterConfig } from '../config/index.js';
 import { AggregatorScheduler } from '../services/aggregatorScheduler.js';
@@ -504,6 +505,19 @@ export function createApp(bindings = {}) {
         }
     });
 
+    app.post('/api/aggregators/resolve-airport-meta', async (c) => {
+        try {
+            await requireAuth(c, services.auth);
+            const agg = requireService(services.aggregator, 'Aggregator');
+            const data = await c.req.json();
+            const fallbackUa = getRequestHeader(c.req, 'User-Agent') || DEFAULT_USER_AGENT;
+            const meta = await agg.resolveAirportSourceMeta(data, fallbackUa);
+            return c.json(meta);
+        } catch (e) {
+            return c.text(e.message, e.status || 400);
+        }
+    });
+
     app.delete('/api/aggregators/:id', async (c) => {
         try {
             const { session } = await requireAuth(c, services.auth);
@@ -523,7 +537,24 @@ export function createApp(bindings = {}) {
             if (!aggData || aggData.userId !== session.userId) return c.text('Not found', 404);
             const ua = getRequestHeader(c.req, 'User-Agent') || DEFAULT_USER_AGENT;
             const refreshed = await aggSvc.refresh(c.req.param('id'), ua);
-            return c.json({ lastRefresh: refreshed.lastRefresh, cachedProxyCount: refreshed.cachedProxies?.length || 0 });
+            return c.json({
+                lastRefresh: refreshed.lastRefresh,
+                cachedProxyCount: refreshed.cachedProxies?.length || 0,
+                airportRefreshResults: refreshed.airportRefreshResults || []
+            });
+        } catch (e) {
+            return c.text(e.message, e.status || 400);
+        }
+    });
+
+    app.get('/api/aggregators/:id/proxies', async (c) => {
+        try {
+            const { session } = await requireAuth(c, services.auth);
+            const aggSvc = requireService(services.aggregator, 'Aggregator');
+            const aggData = await aggSvc.get(c.req.param('id'));
+            if (!aggData || aggData.userId !== session.userId) return c.text('Not found', 404);
+            const proxies = await aggSvc.listCachedProxyDetails(c.req.param('id'));
+            return c.json(proxies);
         } catch (e) {
             return c.text(e.message, e.status || 400);
         }
@@ -577,8 +608,7 @@ export function createApp(bindings = {}) {
             if (format === 'xray') {
                 const uriLines = proxies.map(p => {
                     // Re-serialize proxy objects to URI strings for xray output
-                    if (p._rawUri) return p._rawUri;
-                    return null;
+                    return p._rawUri || serializeProxyToShareUri(p) || null;
                 }).filter(Boolean);
                 return c.text(encodeBase64(uriLines.join('\n')));
             }

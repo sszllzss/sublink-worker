@@ -134,8 +134,9 @@ export class SurgeConfigBuilder extends BaseConfigBuilder {
         return surgeProxy;
     }
 
-    addProxyToConfig(proxy) {
+    addProxyToConfig(proxy, sourceProxy = null) {
         this.config.proxies = this.config.proxies || [];
+        const preserveDuplicateProxy = this.shouldPreserveDuplicateProxy(sourceProxy);
         addProxyWithDedup(this.config.proxies, proxy, {
             getName: (item) => this.getProxyName(item),
             setName: (value, name) => {
@@ -147,6 +148,9 @@ export class SurgeConfigBuilder extends BaseConfigBuilder {
             },
             isSame: (existing, incoming) => {
                 if (typeof existing !== 'string' || typeof incoming !== 'string') return false;
+                if (preserveDuplicateProxy) {
+                    return existing === incoming;
+                }
                 const existingSuffix = existing.substring(existing.indexOf('='));
                 const incomingSuffix = incoming.substring(incoming.indexOf('='));
                 return existingSuffix === incomingSuffix;
@@ -235,6 +239,7 @@ export class SurgeConfigBuilder extends BaseConfigBuilder {
             translator: this.t,
             groupByCountry: false,
             manualGroupName: this.manualGroupName,
+            sourceGroupNames: this.sourceGroupNames,
             countryGroupNames: this.countryGroupNames,
             includeAutoSelect: this.includeAutoSelect
         });
@@ -246,9 +251,55 @@ export class SurgeConfigBuilder extends BaseConfigBuilder {
             translator: this.t,
             groupByCountry: this.groupByCountry,
             manualGroupName: this.manualGroupName,
+            sourceGroupNames: this.sourceGroupNames,
             countryGroupNames: this.countryGroupNames,
             includeAutoSelect: this.includeAutoSelect
         });
+    }
+
+    addSourceGroups() {
+        const sourceGroups = this.getAggregatedSourceGroups();
+        if (sourceGroups.length === 0) {
+            this.sourceGroupNames = [];
+            return;
+        }
+
+        this.config['proxy-groups'] = this.config['proxy-groups'] || [];
+        const existing = new Set((this.config['proxy-groups'] || [])
+            .map(g => this.getGroupName(g)?.trim())
+            .filter(Boolean));
+        const validProxyNames = new Set(this.getProxyList());
+
+        const manualProxyNames = this.getProxyList();
+        const manualGroupName = manualProxyNames.length > 0 ? this.t('outboundNames.Manual Switch') : null;
+        if (manualGroupName) {
+            const manualNorm = manualGroupName.trim();
+            if (!existing.has(manualNorm)) {
+                this.config['proxy-groups'].push(
+                    this.createProxyGroup(manualGroupName, 'select', this.sanitizeOptions(manualProxyNames))
+                );
+                existing.add(manualNorm);
+            }
+            this.manualGroupName = manualGroupName;
+        }
+
+        const sourceGroupNames = [];
+        sourceGroups.forEach(group => {
+            const groupName = typeof group?.name === 'string' ? group.name.trim() : '';
+            const groupProxies = this.sanitizeOptions((group.proxies || []).filter(name => validProxyNames.has(name)));
+            if (!groupName || groupProxies.length === 0) {
+                return;
+            }
+            if (!existing.has(groupName)) {
+                this.config['proxy-groups'].push(
+                    this.createProxyGroup(groupName, 'select', groupProxies)
+                );
+                existing.add(groupName);
+            }
+            sourceGroupNames.push(groupName);
+        });
+
+        this.sourceGroupNames = sourceGroupNames;
     }
 
     addAutoSelectGroup(proxyList) {
@@ -304,6 +355,7 @@ export class SurgeConfigBuilder extends BaseConfigBuilder {
                     this.t('outboundNames.Node Select'),
                     ...(this.includeAutoSelect ? [this.t('outboundNames.Auto Select')] : []),
                     ...(this.manualGroupName ? [this.manualGroupName] : []),
+                    ...this.sourceGroupNames,
                     'DIRECT',
                     'REJECT'
                 ];
@@ -366,6 +418,7 @@ export class SurgeConfigBuilder extends BaseConfigBuilder {
                 translator: this.t,
                 groupByCountry: true,
                 manualGroupName,
+                sourceGroupNames: this.sourceGroupNames,
                 countryGroupNames,
                 includeAutoSelect: this.includeAutoSelect
             });

@@ -329,14 +329,18 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
         }
     }
 
-    addProxyToConfig(proxy) {
+    addProxyToConfig(proxy, sourceProxy = null) {
         this.config.proxies = this.config.proxies || [];
+        const preserveDuplicateProxy = this.shouldPreserveDuplicateProxy(sourceProxy);
         addProxyWithDedup(this.config.proxies, proxy, {
             getName: (item) => item?.name,
             setName: (item, name) => {
                 if (item) item.name = name;
             },
             isSame: (a = {}, b = {}) => {
+                if (preserveDuplicateProxy) {
+                    return JSON.stringify(a) === JSON.stringify(b);
+                }
                 const { name: _name, ...restOfProxy } = b;
                 const { name: __name, ...restOfExisting } = a;
                 return JSON.stringify(restOfProxy) === JSON.stringify(restOfExisting);
@@ -382,6 +386,7 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
             translator: this.t,
             groupByCountry: this.groupByCountry,
             manualGroupName: this.manualGroupName,
+            sourceGroupNames: this.sourceGroupNames,
             countryGroupNames: this.countryGroupNames,
             includeAutoSelect: this.includeAutoSelect
         });
@@ -407,9 +412,58 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
             translator: this.t,
             groupByCountry: this.groupByCountry,
             manualGroupName: this.manualGroupName,
+            sourceGroupNames: this.sourceGroupNames,
             countryGroupNames: this.countryGroupNames,
             includeAutoSelect: this.includeAutoSelect
         });
+    }
+
+    addSourceGroups() {
+        const sourceGroups = this.getAggregatedSourceGroups();
+        if (sourceGroups.length === 0) {
+            this.sourceGroupNames = [];
+            return;
+        }
+
+        this.config['proxy-groups'] = this.config['proxy-groups'] || [];
+        const existingNames = new Set((this.config['proxy-groups'] || []).map(g => normalizeGroupName(g?.name)).filter(Boolean));
+        const validProxyNames = new Set(this.getProxyList());
+
+        const manualProxyNames = this.getProxyList();
+        const manualGroupName = manualProxyNames.length > 0 ? this.t('outboundNames.Manual Switch') : null;
+        if (manualGroupName) {
+            const manualNorm = normalizeGroupName(manualGroupName);
+            if (!existingNames.has(manualNorm)) {
+                this.config['proxy-groups'].push({
+                    name: manualGroupName,
+                    type: 'select',
+                    proxies: manualProxyNames
+                });
+                existingNames.add(manualNorm);
+            }
+            this.manualGroupName = manualGroupName;
+        }
+
+        const sourceGroupNames = [];
+        sourceGroups.forEach(group => {
+            const groupName = group.name;
+            const groupNorm = normalizeGroupName(groupName);
+            const groupProxies = uniqueNames((group.proxies || []).filter(name => validProxyNames.has(name)));
+            if (!groupName || groupProxies.length === 0) {
+                return;
+            }
+            if (!existingNames.has(groupNorm)) {
+                this.config['proxy-groups'].push({
+                    name: groupName,
+                    type: 'select',
+                    proxies: groupProxies
+                });
+                existingNames.add(groupNorm);
+            }
+            sourceGroupNames.push(groupName);
+        });
+
+        this.sourceGroupNames = sourceGroupNames;
     }
 
     addOutboundGroups(outbounds, proxyList) {
@@ -450,6 +504,7 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
                         this.t('outboundNames.Node Select'),
                         ...(this.includeAutoSelect ? [this.t('outboundNames.Auto Select')] : []),
                         ...(this.manualGroupName ? [this.manualGroupName] : []),
+                        ...this.sourceGroupNames,
                         'DIRECT',
                         'REJECT'
                     ];
@@ -548,6 +603,7 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
                 translator: this.t,
                 groupByCountry: true,
                 manualGroupName,
+                sourceGroupNames: this.sourceGroupNames,
                 countryGroupNames,
                 includeAutoSelect: this.includeAutoSelect
             });

@@ -133,14 +133,18 @@ export class SingboxConfigBuilder extends BaseConfigBuilder {
         return sanitized;
     }
 
-    addProxyToConfig(proxy) {
+    addProxyToConfig(proxy, sourceProxy = null) {
         this.config.outbounds = this.config.outbounds || [];
+        const preserveDuplicateProxy = this.shouldPreserveDuplicateProxy(sourceProxy);
         addProxyWithDedup(this.config.outbounds, proxy, {
             getName: (item) => item?.tag,
             setName: (item, name) => {
                 if (item) item.tag = name;
             },
             isSame: (existing = {}, incoming = {}) => {
+                if (preserveDuplicateProxy) {
+                    return JSON.stringify(existing) === JSON.stringify(incoming);
+                }
                 const { tag: _incomingTag, ...restIncoming } = incoming;
                 const { tag: _existingTag, ...restExisting } = existing;
                 return JSON.stringify(restIncoming) === JSON.stringify(restExisting);
@@ -190,6 +194,7 @@ export class SingboxConfigBuilder extends BaseConfigBuilder {
             translator: this.t,
             groupByCountry: this.groupByCountry,
             manualGroupName: this.manualGroupName,
+            sourceGroupNames: this.sourceGroupNames,
             countryGroupNames: this.countryGroupNames,
             includeAutoSelect
         });
@@ -215,9 +220,58 @@ export class SingboxConfigBuilder extends BaseConfigBuilder {
             translator: this.t,
             groupByCountry: this.groupByCountry,
             manualGroupName: this.manualGroupName,
+            sourceGroupNames: this.sourceGroupNames,
             countryGroupNames: this.countryGroupNames,
             includeAutoSelect: this.includeAutoSelect && this.hasAutoSelectCandidates(proxyList)
         });
+    }
+
+    addSourceGroups() {
+        const sourceGroups = this.getAggregatedSourceGroups();
+        if (sourceGroups.length === 0) {
+            this.sourceGroupNames = [];
+            return;
+        }
+
+        this.config.outbounds = this.config.outbounds || [];
+        const existingTags = new Set((this.config.outbounds || []).map(o => normalizeGroupName(o?.tag)).filter(Boolean));
+        const validProxyTags = new Set(this.getProxyList());
+
+        const manualProxyNames = this.getProxyList();
+        const manualGroupName = manualProxyNames.length > 0 ? this.t('outboundNames.Manual Switch') : null;
+        if (manualGroupName) {
+            const manualNorm = normalizeGroupName(manualGroupName);
+            if (!existingTags.has(manualNorm)) {
+                this.config.outbounds.push({
+                    type: 'selector',
+                    tag: manualGroupName,
+                    outbounds: manualProxyNames
+                });
+                existingTags.add(manualNorm);
+            }
+            this.manualGroupName = manualGroupName;
+        }
+
+        const sourceGroupNames = [];
+        sourceGroups.forEach(group => {
+            const groupName = group.name;
+            const groupNorm = normalizeGroupName(groupName);
+            const groupOutbounds = uniqueNames((group.proxies || []).filter(name => validProxyTags.has(name)));
+            if (!groupName || groupOutbounds.length === 0) {
+                return;
+            }
+            if (!existingTags.has(groupNorm)) {
+                this.config.outbounds.push({
+                    type: 'selector',
+                    tag: groupName,
+                    outbounds: groupOutbounds
+                });
+                existingTags.add(groupNorm);
+            }
+            sourceGroupNames.push(groupName);
+        });
+
+        this.sourceGroupNames = sourceGroupNames;
     }
 
     addOutboundGroups(outbounds, proxyList) {
@@ -252,6 +306,7 @@ export class SingboxConfigBuilder extends BaseConfigBuilder {
                     this.t('outboundNames.Node Select'),
                     ...(includeAutoSelect ? [this.t('outboundNames.Auto Select')] : []),
                     ...(this.manualGroupName ? [this.manualGroupName] : []),
+                    ...this.sourceGroupNames,
                     'DIRECT',
                     'REJECT'
                 ];
@@ -327,6 +382,7 @@ export class SingboxConfigBuilder extends BaseConfigBuilder {
                 translator: this.t,
                 groupByCountry: true,
                 manualGroupName,
+                sourceGroupNames: this.sourceGroupNames,
                 countryGroupNames,
                 includeAutoSelect
             });

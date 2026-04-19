@@ -13,6 +13,11 @@ const OUTPUT_FORMATS = [
 ];
 
 export const AggregatorPage = ({ t }) => {
+  const tr = (key, fallback) => {
+    const value = t(key);
+    return value === key ? fallback : value;
+  };
+
   const i18n = {
     aggregatorTitle: t('aggregatorTitle'),
     aggregatorDesc: t('aggregatorDesc'),
@@ -56,6 +61,28 @@ export const AggregatorPage = ({ t }) => {
     airportUserAgent: t('airportUserAgent'),
     airportUserAgentPlaceholder: t('airportUserAgentPlaceholder'),
     airportUserAgentHint: t('airportUserAgentHint'),
+    resolveAirportMeta: tr('resolveAirportMeta', '获取名称/前缀'),
+    resolvingAirportMeta: tr('resolvingAirportMeta', '获取中...'),
+    airportRefreshResults: tr('airportRefreshResults', '机场刷新结果'),
+    airportRefreshSuccess: tr('airportRefreshSuccess', '成功'),
+    airportRefreshEmpty: tr('airportRefreshEmpty', '解析为空'),
+    airportRefreshError: tr('airportRefreshError', '抓取失败'),
+    airportRefreshPending: tr('airportRefreshPending', '未刷新'),
+    airportRefreshNodeCount: tr('airportRefreshNodeCount', '节点数'),
+    airportRefreshEmptyDetail: tr('airportRefreshEmptyDetail', '抓取成功，但未解析出任何节点'),
+    airportRefreshErrorDetail: tr('airportRefreshErrorDetail', '抓取机场订阅失败'),
+    airportRefreshPendingDetail: tr('airportRefreshPendingDetail', '保存后请手动刷新以获取最新结果'),
+    preferredIpGroups: tr('preferredIpGroups', '优选 IP 分组'),
+    preferredIpGroupsDesc: tr('preferredIpGroupsDesc', '为一个基础节点批量套用多条优选 IP，每行一个 IP，自动展开为多个节点。'),
+    addPreferredIpGroup: tr('addPreferredIpGroup', '添加优选 IP 分组'),
+    preferredIpGroupName: tr('preferredIpGroupName', '分组名称'),
+    preferredIpGroupNamePlaceholder: tr('preferredIpGroupNamePlaceholder', '例如：优选落地 A'),
+    preferredIpNode: tr('preferredIpNode', '基础节点'),
+    preferredIpNodePlaceholder: tr('preferredIpNodePlaceholder', '粘贴一个节点 URI，例如：vless://... 或 trojan://...'),
+    preferredIpList: tr('preferredIpList', 'IP 列表'),
+    preferredIpListPlaceholder: tr('preferredIpListPlaceholder', '一行一个 IP，例如：\n1.1.1.1\n8.8.8.8'),
+    preferredIpPrefix: tr('preferredIpPrefix', '节点前缀'),
+    preferredIpPrefixPlaceholder: tr('preferredIpPrefixPlaceholder', '例如：优选'),
     customHttpsPortWarning: t('customHttpsPortWarning'),
     moveUp: t('moveUp'),
     moveDown: t('moveDown'),
@@ -74,6 +101,15 @@ export const AggregatorPage = ({ t }) => {
     includeAutoSelect: t('includeAutoSelect'),
     manualRefresh: t('manualRefresh'),
     refreshing: t('refreshing'),
+    viewCachedProxies: tr('viewCachedProxies', '查看节点'),
+    hideCachedProxies: tr('hideCachedProxies', '收起节点'),
+    sourceGrouping: tr('sourceGrouping', '来源分组'),
+    prefixGrouping: tr('prefixGrouping', '前缀分组'),
+    noPrefixGroup: tr('noPrefixGroup', '未设置前缀'),
+    proxyEndpoint: tr('proxyEndpoint', '节点地址'),
+    shareLinkLabel: tr('shareLinkLabel', '分享链接'),
+    copyShareLink: tr('copyShareLink', '复制分享链接'),
+    unsupportedShareLink: tr('unsupportedShareLink', '当前节点暂不支持分享链接'),
     outputLinks: t('outputLinks'),
     outputLinksDesc: t('outputLinksDesc'),
     lastRefresh: t('lastRefresh'),
@@ -208,6 +244,11 @@ export const AggregatorPage = ({ t }) => {
                     </p>
                   </div>
                   <div class="flex gap-2">
+                    <button type="button" x-on:click="toggleAggProxies(agg)"
+                      class="px-3 py-1.5 text-sm bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors">
+                      <i class="fas fa-list-ul mr-1"></i>
+                      <span x-text="expandedAggIds[agg.id] ? AGG_I18N.hideCachedProxies : AGG_I18N.viewCachedProxies"></span>
+                    </button>
                     <button type="button" x-on:click="refreshAgg(agg)" x-bind:disabled="refreshingId === agg.id"
                       class="px-3 py-1.5 text-sm bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors disabled:opacity-60 flex items-center gap-1">
                       <i class="fas" x-bind:class="refreshingId === agg.id ? 'fa-spinner fa-spin' : 'fa-sync-alt'"></i>
@@ -242,6 +283,101 @@ export const AggregatorPage = ({ t }) => {
                         </button>
                       </div>
                     ))}
+                  </div>
+                </div>
+
+                <div x-show="(agg.airportSources || []).length > 0" class="border-t border-gray-100 dark:border-gray-700 pt-4 mt-4">
+                  <p class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-3 uppercase tracking-wide" x-text="AGG_I18N.airportRefreshResults"></p>
+                  <div class="space-y-2">
+                    <template x-for="item in getAirportRefreshItems(agg)" x-bind:key="`${agg.id}-airport-refresh-${item.index}`">
+                      <div class="rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-3 bg-gray-50 dark:bg-gray-900/30">
+                        <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div class="min-w-0 flex-1">
+                            <div class="text-sm font-medium text-gray-900 dark:text-white break-all" x-text="item.label"></div>
+                            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1 break-all" x-text="item.url"></div>
+                            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1" x-text="getAirportRefreshDetail(item)"></div>
+                          </div>
+                          <div class="flex items-center gap-2">
+                            <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium"
+                              x-bind:class="getAirportRefreshBadgeClass(item.status)"
+                              x-text="getAirportRefreshStatusText(item)"></span>
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+
+                <div x-show="expandedAggIds[agg.id]" class="border-t border-gray-100 dark:border-gray-700 pt-4 mt-4">
+                  <div class="flex items-center justify-between mb-3">
+                    <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">{tr('viewCachedProxies', '查看节点')}</p>
+                    <span class="text-xs text-gray-400" x-text="AGG_I18N.sourceGrouping + ' / ' + AGG_I18N.prefixGrouping"></span>
+                  </div>
+
+                  <div x-show="proxyListLoadingId === agg.id" class="text-sm text-gray-400 py-4">
+                    <i class="fas fa-spinner fa-spin mr-2"></i>
+                    <span x-text="AGG_I18N.refreshing"></span>
+                  </div>
+
+                  <div x-show="proxyListLoadingId !== agg.id && getAggProxyGroups(agg.id).length === 0" class="text-sm text-gray-400 py-4">
+                    {tr('cachedProxies', '已缓存节点')} 0
+                  </div>
+
+                  <div x-show="proxyListLoadingId !== agg.id && getAggProxyGroups(agg.id).length > 0" class="space-y-4">
+                    <template x-for="sourceGroup in getAggProxyGroups(agg.id)" x-bind:key="sourceGroup.key">
+                      <div class="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                        <div class="px-4 py-3 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-700">
+                          <div class="text-sm font-semibold text-gray-800 dark:text-gray-100" x-text="sourceGroup.label"></div>
+                        </div>
+
+                        <div class="divide-y divide-gray-100 dark:divide-gray-700">
+                          <template x-for="prefixGroup in sourceGroup.prefixes" x-bind:key="prefixGroup.key">
+                            <div class="px-4 py-3">
+                              <div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+                                <span x-text="AGG_I18N.prefixGrouping + ': ' + prefixGroup.label"></span>
+                              </div>
+
+                              <div class="space-y-2">
+                                <template x-for="proxy in prefixGroup.items" x-bind:key="proxy.index">
+                                  <div class="rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-3 bg-white dark:bg-gray-800/60">
+                                    <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                      <div class="min-w-0 flex-1">
+                                        <div class="text-sm font-medium text-gray-900 dark:text-white break-all" x-text="proxy.name"></div>
+                                        <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                          <span class="uppercase" x-text="proxy.type"></span>
+                                          <span class="mx-2">·</span>
+                                          <span x-text="AGG_I18N.proxyEndpoint + ': ' + proxy.server + ':' + proxy.port"></span>
+                                        </div>
+                                        <div class="mt-2">
+                                          <div class="text-[11px] text-gray-500 dark:text-gray-400 mb-1" x-text="AGG_I18N.shareLinkLabel"></div>
+                                          <template x-if="proxy.shareUri">
+                                            <input type="text" readonly x-bind:value="proxy.shareUri"
+                                              class="w-full px-2.5 py-1.5 text-[11px] rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 font-mono" />
+                                          </template>
+                                          <template x-if="!proxy.shareUri">
+                                            <div class="text-[11px] text-gray-400" x-text="AGG_I18N.unsupportedShareLink"></div>
+                                          </template>
+                                        </div>
+                                      </div>
+
+                                      <div class="flex items-center gap-3">
+                                        <button type="button"
+                                          x-on:click="copyShareUri(proxy.shareUri, agg.id + ':share:' + proxy.index)"
+                                          x-bind:disabled="!proxy.shareUri"
+                                          class="px-3 py-1.5 text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors disabled:opacity-60">
+                                          <i class="fas" x-bind:class="copied === agg.id + ':share:' + proxy.index ? 'fa-check' : 'fa-link'"></i>
+                                          <span class="ml-1" x-text="proxy.shareUri ? AGG_I18N.copyShareLink : AGG_I18N.unsupportedShareLink"></span>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </template>
+                              </div>
+                            </div>
+                          </template>
+                        </div>
+                      </div>
+                    </template>
                   </div>
                 </div>
               </div>
@@ -321,6 +457,70 @@ export const AggregatorPage = ({ t }) => {
               </div>
             </div>
 
+            {/* Preferred IP Groups */}
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+              <div class="flex items-center justify-between mb-1">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <i class="fas fa-bullseye text-gray-400 text-sm"></i>
+                  <span x-text="AGG_I18N.preferredIpGroups"></span>
+                </h3>
+                <button type="button" x-on:click="addPreferredIpGroup()"
+                  class="px-3 py-1.5 text-sm bg-primary-50 dark:bg-primary-900/20 text-primary-600 dark:text-primary-400 rounded-lg hover:bg-primary-100 dark:hover:bg-primary-900/40 transition-colors flex items-center gap-1">
+                  <i class="fas fa-plus text-xs"></i>
+                  <span x-text="AGG_I18N.addPreferredIpGroup"></span>
+                </button>
+              </div>
+              <p class="text-sm text-gray-500 dark:text-gray-400 mb-4" x-text="AGG_I18N.preferredIpGroupsDesc"></p>
+
+              <div class="space-y-4">
+                <template x-for="(group, idx) in form.preferredIpGroups" x-bind:key="idx">
+                  <div class="p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/30">
+                    <div class="flex items-center justify-between mb-3">
+                      <span class="text-sm font-medium text-gray-600 dark:text-gray-400" x-text="`#${idx + 1} ` + (group.name || group.prefix || '')"></span>
+                      <div class="flex items-center gap-2">
+                        <button type="button" x-on:click="movePreferredIpGroup(idx, -1)" x-bind:disabled="idx === 0" title={t('moveUp')}
+                          class="w-8 h-8 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-white dark:hover:bg-gray-700 disabled:opacity-30 disabled:hover:bg-transparent transition-colors text-sm">
+                          <i class="fas fa-arrow-up"></i>
+                        </button>
+                        <button type="button" x-on:click="movePreferredIpGroup(idx, 1)" x-bind:disabled="idx === form.preferredIpGroups.length - 1" title={t('moveDown')}
+                          class="w-8 h-8 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-white dark:hover:bg-gray-700 disabled:opacity-30 disabled:hover:bg-transparent transition-colors text-sm">
+                          <i class="fas fa-arrow-down"></i>
+                        </button>
+                        <button type="button" x-on:click="removePreferredIpGroup(idx)" title={t('removeSource')}
+                          class="w-8 h-8 inline-flex items-center justify-center rounded-lg text-red-400 hover:text-red-600 hover:bg-white dark:hover:bg-gray-700 transition-colors text-sm">
+                          <i class="fas fa-times"></i>
+                        </button>
+                      </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                      <div>
+                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1" x-text="AGG_I18N.preferredIpGroupName"></label>
+                        <input type="text" x-model="group.name" x-bind:placeholder="AGG_I18N.preferredIpGroupNamePlaceholder"
+                          class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1" x-text="AGG_I18N.preferredIpPrefix"></label>
+                        <input type="text" x-model="group.prefix" x-bind:placeholder="AGG_I18N.preferredIpPrefixPlaceholder"
+                          class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent" />
+                      </div>
+                    </div>
+                    <div class="space-y-3">
+                      <div>
+                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1" x-text="AGG_I18N.preferredIpNode"></label>
+                        <textarea x-model="group.node" rows={3} x-bind:placeholder="AGG_I18N.preferredIpNodePlaceholder"
+                          class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm font-mono focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-y"></textarea>
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1" x-text="AGG_I18N.preferredIpList"></label>
+                        <textarea x-model="group.ips" rows={5} x-bind:placeholder="AGG_I18N.preferredIpListPlaceholder"
+                          class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm font-mono focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-y"></textarea>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+
             {/* Airport Sources */}
             <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
               <div class="flex items-center justify-between mb-1">
@@ -342,6 +542,11 @@ export const AggregatorPage = ({ t }) => {
 	                    <div class="flex items-center justify-between mb-3">
 	                      <span class="text-sm font-medium text-gray-600 dark:text-gray-400" x-text="`#${idx + 1} ` + (src.name || '')"></span>
 	                      <div class="flex items-center gap-2">
+	                        <button type="button" x-on:click="resolveAirportMeta(idx)" x-bind:disabled="resolvingAirportIndex === idx"
+	                          class="px-3 py-1.5 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors disabled:opacity-60 flex items-center gap-1">
+	                          <i class="fas" x-bind:class="resolvingAirportIndex === idx ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'"></i>
+	                          <span x-text="resolvingAirportIndex === idx ? AGG_I18N.resolvingAirportMeta : AGG_I18N.resolveAirportMeta"></span>
+	                        </button>
 	                        <button type="button" x-on:click="moveAirport(idx, -1)" x-bind:disabled="idx === 0" title={t('moveUp')}
 	                          class="w-8 h-8 inline-flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-700 hover:bg-white dark:hover:bg-gray-700 disabled:opacity-30 disabled:hover:bg-transparent transition-colors text-sm">
 	                          <i class="fas fa-arrow-up"></i>

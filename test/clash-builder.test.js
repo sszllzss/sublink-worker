@@ -116,4 +116,131 @@ ss://YWVzLTEyOC1nY206dGVzdA@example.com:444#US-Node-1
     expect(fallbackGroup).toBeDefined();
     expect(fallbackGroup.proxies[0]).not.toBe('DIRECT');
   });
+
+  it('should create source-based groups for aggregated proxies', async () => {
+    const builder = new ClashConfigBuilder('', 'minimal', [], null, 'zh-CN', 'test-agent');
+    builder.setPreParsedProxies([
+      {
+        type: 'trojan',
+        tag: 'A Node-1',
+        server: 'a.example.com',
+        server_port: 443,
+        password: 'pass',
+        tls: { enabled: true, server_name: 'a.example.com' },
+        _aggregatorSourceGroupName: '🧩 自定义 A'
+      },
+      {
+        type: 'trojan',
+        tag: 'A Node-2',
+        server: 'a2.example.com',
+        server_port: 443,
+        password: 'pass',
+        tls: { enabled: true, server_name: 'a2.example.com' },
+        _aggregatorSourceGroupName: '🧩 自定义 A'
+      },
+      {
+        type: 'trojan',
+        tag: 'B Node-1',
+        server: 'b.example.com',
+        server_port: 443,
+        password: 'pass',
+        tls: { enabled: true, server_name: 'b.example.com' },
+        _aggregatorSourceGroupName: '✈️ 机场 B'
+      }
+    ]);
+
+    const yamlText = await builder.build();
+    const built = yaml.load(yamlText);
+
+    const manualName = t('outboundNames.Manual Switch');
+    const nodeSelectName = t('outboundNames.Node Select');
+    const sourceGroupA = (built['proxy-groups'] || []).find(g => g?.name === '🧩 自定义 A');
+    const sourceGroupB = (built['proxy-groups'] || []).find(g => g?.name === '✈️ 机场 B');
+    const nodeSelect = (built['proxy-groups'] || []).find(g => g?.name === nodeSelectName);
+
+    expect(sourceGroupA?.proxies).toEqual(['A Node-1', 'A Node-2']);
+    expect(sourceGroupB?.proxies).toEqual(['B Node-1']);
+    expect(nodeSelect).toBeDefined();
+    expect(nodeSelect.proxies).toEqual(expect.arrayContaining([manualName, '🧩 自定义 A', '✈️ 机场 B']));
+    expect(nodeSelect.proxies).not.toEqual(expect.arrayContaining(['A Node-1', 'B Node-1']));
+  });
+  it('should preserve aggregated proxies with different source groups even when configs are identical', async () => {
+    const builder = new ClashConfigBuilder('', 'minimal', [], null, 'zh-CN', 'test-agent');
+    builder.setPreParsedProxies([
+      {
+        type: 'vless',
+        tag: '反代IP2 vlees+ws-cnd [154.194.0.235]',
+        server: '154.194.0.235',
+        server_port: 2053,
+        uuid: '97508eb2-2ab0-4a62-9941-995c3412d255',
+        security: 'none',
+        tls: {
+          enabled: true,
+          server_name: 'vps.sszl.cc.cd',
+          insecure: false,
+          utls: {
+            enabled: true,
+            fingerprint: 'chrome'
+          }
+        },
+        transport: {
+          type: 'ws',
+          path: '/97508eb2',
+          headers: {
+            host: 'vps.sszl.cc.cd'
+          }
+        },
+        network: 'tcp',
+        alpn: ['h2', 'http/1.1'],
+        _aggregatorSourceGroupName: '🎯 反代IP2',
+        _aggregatorSourceType: 'preferred-ip',
+        _aggregatorSourceName: '反代IP2',
+        _aggregatorSourcePrefix: '反代IP2'
+      },
+      {
+        type: 'vless',
+        tag: '反代IP5 vlees+ws-cnd [154.194.0.235]',
+        server: '154.194.0.235',
+        server_port: 2053,
+        uuid: '97508eb2-2ab0-4a62-9941-995c3412d255',
+        security: 'none',
+        tls: {
+          enabled: true,
+          server_name: 'vps.sszl.cc.cd',
+          insecure: false,
+          utls: {
+            enabled: true,
+            fingerprint: 'chrome'
+          }
+        },
+        transport: {
+          type: 'ws',
+          path: '/97508eb2',
+          headers: {
+            host: 'vps.sszl.cc.cd'
+          }
+        },
+        network: 'tcp',
+        alpn: ['h2', 'http/1.1'],
+        _aggregatorSourceGroupName: '🎯 反代IP5',
+        _aggregatorSourceType: 'preferred-ip',
+        _aggregatorSourceName: '反代IP5',
+        _aggregatorSourcePrefix: '反代IP5'
+      }
+    ]);
+
+    const yamlText = await builder.build();
+    const built = yaml.load(yamlText);
+
+    expect((built.proxies || []).map(proxy => proxy.name)).toEqual(expect.arrayContaining([
+      '反代IP2 vlees+ws-cnd [154.194.0.235]',
+      '反代IP5 vlees+ws-cnd [154.194.0.235]'
+    ]));
+
+    const sourceGroup2 = (built['proxy-groups'] || []).find(group => group?.name === '🎯 反代IP2');
+    const sourceGroup5 = (built['proxy-groups'] || []).find(group => group?.name === '🎯 反代IP5');
+
+    expect(sourceGroup2?.proxies).toEqual(['反代IP2 vlees+ws-cnd [154.194.0.235]']);
+    expect(sourceGroup5?.proxies).toEqual(['反代IP5 vlees+ws-cnd [154.194.0.235]']);
+  });
 });

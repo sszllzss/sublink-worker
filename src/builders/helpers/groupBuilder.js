@@ -21,15 +21,17 @@ export function withDirectReject(options = []) {
     ]);
 }
 
-export function buildNodeSelectMembers({ proxyList = [], translator, groupByCountry = false, manualGroupName, countryGroupNames = [], includeAutoSelect = true }) {
+export function buildNodeSelectMembers({ proxyList = [], translator, groupByCountry = false, manualGroupName, sourceGroupNames = [], countryGroupNames = [], includeAutoSelect = true }) {
     if (!translator) {
         throw new Error('buildNodeSelectMembers requires a translator function');
     }
     const autoName = translator('outboundNames.Auto Select');
-    const base = groupByCountry
+    const hasGroupedSources = groupByCountry || sourceGroupNames.length > 0;
+    const base = hasGroupedSources
         ? [
             ...(includeAutoSelect ? [autoName] : []),
             ...(manualGroupName ? [manualGroupName] : []),
+            ...sourceGroupNames,
             ...countryGroupNames
         ]
         : [
@@ -39,15 +41,17 @@ export function buildNodeSelectMembers({ proxyList = [], translator, groupByCoun
     return withDirectReject(base);
 }
 
-export function buildSelectorMembers({ proxyList = [], translator, groupByCountry = false, manualGroupName, countryGroupNames = [], includeAutoSelect = true }) {
+export function buildSelectorMembers({ proxyList = [], translator, groupByCountry = false, manualGroupName, sourceGroupNames = [], countryGroupNames = [], includeAutoSelect = true }) {
     if (!translator) {
         throw new Error('buildSelectorMembers requires a translator function');
     }
-    const base = groupByCountry
+    const hasGroupedSources = groupByCountry || sourceGroupNames.length > 0;
+    const base = hasGroupedSources
         ? [
             translator('outboundNames.Node Select'),
             ...(includeAutoSelect ? [translator('outboundNames.Auto Select')] : []),
             ...(manualGroupName ? [manualGroupName] : []),
+            ...sourceGroupNames,
             ...countryGroupNames
         ]
         : [
