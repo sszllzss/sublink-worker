@@ -44,7 +44,7 @@
 - **Node.js**: `npm run build:node && node dist/node-server.cjs`
 - **Vercel**: `vercel deploy` (configure KV in project settings)
 - **Docker**: `docker pull ghcr.io/sszllzss/sublink-worker:latest`
-- **Docker Compose**: `docker compose up -d` (includes Redis)
+- **Docker Compose**: `docker compose up --build -d` (includes Redis)
 
 ## ✨ Features
 
