@@ -243,7 +243,7 @@ ss://YWVzLTEyOC1nY206dGVzdA@example.com:444#US-Node-1
     expect(sourceGroup2?.proxies).toEqual(['反代IP2 vlees+ws-cnd [154.194.0.235]']);
     expect(sourceGroup5?.proxies).toEqual(['反代IP5 vlees+ws-cnd [154.194.0.235]']);
   });
-  it('should emit Stash-compatible dns nameserver-policy values as strings', async () => {
+  it('should emit clash-compatible dns nameserver-policy values as strings', async () => {
     const input = `
 proxies:
   - name: Node-A
@@ -254,7 +254,7 @@ proxies:
     password: test
 `;
 
-    const builder = new ClashConfigBuilder(input, 'minimal', [], null, 'zh-CN', 'Stash/1.0');
+    const builder = new ClashConfigBuilder(input, 'minimal', [], null, 'zh-CN', 'test-agent');
     const yamlText = await builder.build();
     const built = yaml.load(yamlText);
     const nameserverPolicy = built?.dns?.['nameserver-policy'];

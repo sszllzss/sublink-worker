@@ -39,11 +39,7 @@ function supportsMrsFormat(userAgent) {
     return true;
 }
 
-function isStashClient(userAgent) {
-    return typeof userAgent === 'string' && userAgent.toLowerCase().includes('stash');
-}
-
-function sanitizeStashDnsConfig(config) {
+function sanitizeClashDnsConfig(config) {
     const dns = config?.dns;
     const nameserverPolicy = dns?.['nameserver-policy'];
     if (!nameserverPolicy || typeof nameserverPolicy !== 'object' || Array.isArray(nameserverPolicy)) {
@@ -794,9 +790,7 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
             this.config['secret'] = secret;
         }
 
-        if (isStashClient(this.userAgent)) {
-            sanitizeStashDnsConfig(this.config);
-        }
+        sanitizeClashDnsConfig(this.config);
 
         return yaml.dump(this.config);
     }
