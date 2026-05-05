@@ -243,4 +243,24 @@ ss://YWVzLTEyOC1nY206dGVzdA@example.com:444#US-Node-1
     expect(sourceGroup2?.proxies).toEqual(['反代IP2 vlees+ws-cnd [154.194.0.235]']);
     expect(sourceGroup5?.proxies).toEqual(['反代IP5 vlees+ws-cnd [154.194.0.235]']);
   });
+  it('should emit Stash-compatible dns nameserver-policy values as strings', async () => {
+    const input = `
+proxies:
+  - name: Node-A
+    type: ss
+    server: a.example.com
+    port: 443
+    cipher: aes-128-gcm
+    password: test
+`;
+
+    const builder = new ClashConfigBuilder(input, 'minimal', [], null, 'zh-CN', 'Stash/1.0');
+    const yamlText = await builder.build();
+    const built = yaml.load(yamlText);
+    const nameserverPolicy = built?.dns?.['nameserver-policy'];
+
+    expect(nameserverPolicy).toBeDefined();
+    expect(nameserverPolicy['geosite:cn,private']).toBe('https://120.53.53.53/dns-query');
+    expect(nameserverPolicy['geosite:geolocation-!cn']).toBe('https://dns.cloudflare.com/dns-query');
+  });
 });

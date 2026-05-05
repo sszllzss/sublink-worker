@@ -39,6 +39,30 @@ function supportsMrsFormat(userAgent) {
     return true;
 }
 
+function isStashClient(userAgent) {
+    return typeof userAgent === 'string' && userAgent.toLowerCase().includes('stash');
+}
+
+function sanitizeStashDnsConfig(config) {
+    const dns = config?.dns;
+    const nameserverPolicy = dns?.['nameserver-policy'];
+    if (!nameserverPolicy || typeof nameserverPolicy !== 'object' || Array.isArray(nameserverPolicy)) {
+        return;
+    }
+
+    Object.entries(nameserverPolicy).forEach(([policy, value]) => {
+        if (!Array.isArray(value)) {
+            return;
+        }
+        const firstResolver = value.find(item => typeof item === 'string' && item.trim() !== '');
+        if (firstResolver) {
+            nameserverPolicy[policy] = firstResolver;
+        } else {
+            delete nameserverPolicy[policy];
+        }
+    });
+}
+
 function getClashUdpValue(proxy, defaultEnabled = true) {
     if (typeof proxy?.udp !== 'undefined') {
         return proxy.udp;
@@ -768,6 +792,10 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
             this.config['external-ui-name'] = uiName;
             this.config['external-ui-url'] = uiUrl;
             this.config['secret'] = secret;
+        }
+
+        if (isStashClient(this.userAgent)) {
+            sanitizeStashDnsConfig(this.config);
         }
 
         return yaml.dump(this.config);
