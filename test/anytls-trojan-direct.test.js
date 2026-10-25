@@ -84,8 +84,8 @@ describe('sing-box anytls conversion', () => {
             server: 'example.com',
             server_port: 443,
             password: 'pass',
-            idle_session_check_interval: 30,
-            idle_session_timeout: 120,
+            idle_session_check_interval: '30s',
+            idle_session_timeout: '120s',
             min_idle_session: 5,
             tls: {
                 enabled: true,

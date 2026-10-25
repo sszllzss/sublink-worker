@@ -71,53 +71,93 @@ async function fetchViaNodeHttp(url, userAgent, redirectCount = 0) {
     });
 }
 
+const SUBSCRIPTION_URI_PATTERN = /^(ss|vmess|vless|hysteria|hysteria2|hy2|trojan|tuic|anytls|http|https):\/\//i;
+
+function hasSubscriptionUriLine(content) {
+    return content
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean)
+        .some(line => SUBSCRIPTION_URI_PATTERN.test(line));
+}
+
+function isLikelyTomlConfig(content) {
+    return /^\s*\[[^\]]+\]\s*$/m.test(content) && /^\s*[A-Za-z0-9_.-]+\s*=/.test(content);
+}
+
+function isPlainSubscriptionContent(content) {
+    if (!content || typeof content !== 'string') {
+        return false;
+    }
+    return detectFormat(content) !== 'unknown' ||
+        hasSubscriptionUriLine(content) ||
+        isLikelyTomlConfig(content);
+}
+
+function decodeUriComponentIfNeeded(text) {
+    const trimmed = text.trim();
+    if (!trimmed.includes('%')) {
+        return trimmed;
+    }
+
+    try {
+        return decodeURIComponent(trimmed).trim();
+    } catch (urlError) {
+        console.warn('Failed to URL decode the text:', urlError);
+        return trimmed;
+    }
+}
+
+function normalizeBase64Candidate(text) {
+    const compact = text.replace(/\s+/g, '');
+    if (!compact || !/^[A-Za-z0-9+/_-]*={0,2}$/.test(compact)) {
+        return null;
+    }
+    if (/=/.test(compact.replace(/={0,2}$/, ''))) {
+        return null;
+    }
+
+    const withoutPadding = compact.replace(/=+$/, '');
+    if (withoutPadding.length % 4 === 1) {
+        return null;
+    }
+
+    const normalized = withoutPadding.replace(/-/g, '+').replace(/_/g, '/');
+    return normalized + '='.repeat((4 - normalized.length % 4) % 4);
+}
+
 /**
- * Decode content, trying Base64 only when content looks like Base64
+ * Decode content only when the payload proves it is an encoded subscription.
  * @param {string} text - Raw text content
  * @returns {string} - Decoded content
  */
 function decodeContent(text) {
-    const trimmed = text.trim();
-
-    // 如果内容明显是文本格式（含 YAML/JSON/URI 特征），直接返回
-    if (
-        trimmed.startsWith('{') ||          // JSON
-        trimmed.startsWith('proxies:') ||   // Clash YAML
-        trimmed.startsWith('[') ||          // JSON array
-        trimmed.includes('://') ||          // URI list
-        trimmed.includes('\n') && trimmed.includes(':')  // YAML/INI
-    ) {
-        return trimmed;
+    const urlDecodedText = decodeUriComponentIfNeeded(text);
+    if (isPlainSubscriptionContent(urlDecodedText)) {
+        return urlDecodedText;
     }
 
-    // 只有内容看起来像纯 base64（仅含 base64 字符且无空格换行外的特殊字符）才尝试解码
-    const base64Only = trimmed.replace(/[\r\n]/g, '');
-    const looksLikeBase64 = /^[A-Za-z0-9+/]+=*$/.test(base64Only) && base64Only.length % 4 === 0;
-
-    if (looksLikeBase64) {
-        try {
-            const decoded = decodeBase64(base64Only);
-            // 解码结果必须包含可读文本特征才采用
-            if (decoded && (decoded.includes('://') || decoded.includes('proxies:') || decoded.includes('outbounds'))) {
-                return decoded;
-            }
-        } catch (_) {}
+    const base64Candidate = normalizeBase64Candidate(urlDecodedText);
+    if (!base64Candidate) {
+        return urlDecodedText;
     }
 
-    // URL 编码
-    if (trimmed.includes('%')) {
-        try {
-            return decodeURIComponent(trimmed);
-        } catch (_) {}
+    try {
+        const decodedText = decodeUriComponentIfNeeded(decodeBase64(base64Candidate));
+        if (isPlainSubscriptionContent(decodedText)) {
+            return decodedText;
+        }
+    } catch (e) {
+        return urlDecodedText;
     }
 
-    return trimmed;
+    return urlDecodedText;
 }
 
 /**
  * Detect the format of subscription content
  * @param {string} content - Decoded subscription content
- * @returns {'clash'|'singbox'|'unknown'} - Detected format
+ * @returns {'clash'|'singbox'|'surge'|'unknown'} - Detected format
  */
 function detectFormat(content) {
     const trimmed = content.trim();
@@ -137,6 +177,10 @@ function detectFormat(content) {
     // Try YAML (Clash format) - check for proxies: key
     if (trimmed.includes('proxies:')) {
         return 'clash';
+    }
+
+    if (/\[(General|Proxy|Rule|Proxy Group)\]/i.test(trimmed)) {
+        return 'surge';
     }
 
     return 'unknown';
@@ -192,7 +236,7 @@ export async function fetchSubscription(url, userAgent) {
  * Fetch subscription content and detect its format without parsing
  * @param {string} url - The subscription URL to fetch
  * @param {string} userAgent - Optional User-Agent header
- * @returns {Promise<{content: string, format: 'clash'|'singbox'|'unknown', url: string, subscriptionUserinfo?: string, profileName?: string}|null>}
+ * @returns {Promise<{content: string, format: 'clash'|'singbox'|'surge'|'unknown', url: string, subscriptionUserinfo?: string, profileName?: string}|null>}
  */
 export async function fetchSubscriptionWithFormat(url, userAgent, options = {}) {
     const { throwOnError = false } = options;

@@ -1,5 +1,5 @@
 import { ProxyParser } from '../parsers/index.js';
-import { deepCopy, tryDecodeSubscriptionLines, decodeBase64 } from '../utils.js';
+import { createStableProviderName, deepCopy, tryDecodeSubscriptionLines, decodeBase64 } from '../utils.js';
 import { createTranslator } from '../i18n/index.js';
 import { generateRules, getOutbounds, PREDEFINED_RULE_SETS } from '../config/index.js';
 
@@ -15,6 +15,8 @@ export class BaseConfigBuilder {
         this.groupByCountry = groupByCountry;
         this.includeAutoSelect = includeAutoSelect;
         this.providerUrls = [];  // URLs to use as providers (auto-sync)
+        this.providerNodeNames = [];  // node names from provider subscriptions, for country enumeration only
+        this.autoProviderDescriptors = undefined;
         this.subscriptionUserinfo = undefined;
         this.sourceGroupNames = [];
     }
@@ -109,6 +111,9 @@ export class BaseConfigBuilder {
                             // If format is compatible with target client, use as provider
                             if (this.isCompatibleProviderFormat(format)) {
                                 this.providerUrls.push(originalUrl);
+                                // Content is already fetched; keep node names so country
+                                // groups can be built over provider members later.
+                                await this.collectProviderNodeNames(content);
                                 continue;  // Skip parsing, will be used as provider
                             }
 
@@ -191,6 +196,62 @@ export class BaseConfigBuilder {
      */
     isCompatibleProviderFormat(format) {
         return false;  // Default: no provider support
+    }
+
+    /**
+     * Extract node names from an already-fetched provider subscription.
+     * Names are only used to enumerate countries for group filters; the nodes
+     * themselves stay remote. Best-effort: provider mode must not fail here.
+     */
+    async collectProviderNodeNames(content) {
+        try {
+            const { parseSubscriptionContent } = await import('../parsers/subscription/subscriptionContentParser.js');
+            const result = parseSubscriptionContent(content);
+            const proxies = Array.isArray(result?.proxies) ? result.proxies : [];
+            proxies.forEach(proxy => {
+                const name = proxy?.tag ?? proxy?.name;
+                if (typeof name === 'string' && name.trim()) {
+                    this.providerNodeNames.push(name.trim());
+                }
+            });
+        } catch (_) { }
+    }
+
+    getAutoProviderDescriptors(reservedNames = []) {
+        if (this.autoProviderDescriptors) {
+            return this.autoProviderDescriptors;
+        }
+
+        const usedNames = new Set(reservedNames);
+        const providerNamesByUrl = new Map();
+        const descriptors = [];
+
+        for (const url of this.providerUrls) {
+            if (typeof url !== 'string' || url.trim() === '') {
+                throw new Error('Provider URL must be a non-empty string');
+            }
+
+            const normalizedUrl = url.trim();
+            if (providerNamesByUrl.has(normalizedUrl)) {
+                continue;
+            }
+
+            const baseName = createStableProviderName(normalizedUrl);
+            let name = baseName;
+            let suffix = 2;
+
+            while (usedNames.has(name)) {
+                name = `${baseName}_${suffix}`;
+                suffix += 1;
+            }
+
+            usedNames.add(name);
+            providerNamesByUrl.set(normalizedUrl, name);
+            descriptors.push({ name, url: normalizedUrl });
+        }
+
+        this.autoProviderDescriptors = descriptors;
+        return descriptors;
     }
 
     applyConfigOverrides(overrides) {

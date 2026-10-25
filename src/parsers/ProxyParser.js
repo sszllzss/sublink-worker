@@ -27,7 +27,7 @@ export class ProxyParser {
             return undefined;
         }
         const trimmed = url.trim();
-        const type = trimmed.split('://')[0];
+        const type = trimmed.split('://')[0].toLowerCase();
         const parser = protocolParsers[type];
         if (!parser) {
             return undefined;
